@@ -21,7 +21,7 @@ def save_rate(new_rate):
 
 user_status = {}
 user_platform = {}
-user_goal = {} # لتخزين هدف الإعلان (تفاعل، رسائل، إلخ)
+user_goal = {} 
 
 # --- رسالة الترحيب ---
 @bot.message_handler(commands=['start'])
@@ -46,7 +46,7 @@ def select_platform(message):
                types.InlineKeyboardButton("تيك توك 🎵", callback_data="tiktok"))
     bot.send_message(message.chat.id, "اختر المنصة المستهدفة:", reply_markup=markup)
 
-# --- اختيار هدف الإعلان (تفاعل، رسائل، إلخ) ---
+# --- اختيار هدف الإعلان ---
 @bot.callback_query_handler(func=lambda call: call.data in ["facebook", "instagram", "tiktok"])
 def select_goal(call):
     chat_id = call.message.chat.id
@@ -63,16 +63,17 @@ def select_goal(call):
     
     bot.edit_message_text("ما هو الهدف من إعلانك؟", chat_id, call.message.message_id, reply_markup=markup)
 
-# --- طلب المبلغ بعد اختيار الهدف ---
+# --- طلب المبلغ (هنا السطر المصحح 122) ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith("goal_"))
 def ask_amount(call):
     chat_id = call.message.chat.id
     user_goal[chat_id] = call.data
     mode = user_status.get(chat_id)
+    # السطر التالي تم تصحيحه من الخطأ الذي ظهر في الصورة رقم 15
     prompt = "أدخل المبلغ بالدينار (DZD):" if mode == "DZD_TO_USD" else "أدخل قيمة الدولار ($) المطلوبة:"
     bot.send_message(chat_id, prompt)
 
-# --- معالجة الحسابات والإحصائيات بناءً على الهدف ---
+# --- معالجة الحسابات ---
 @bot.message_handler(func=lambda message: message.text.isdigit() or message.text.replace('.','',1).isdigit())
 def process_calculation(message):
     chat_id = message.chat.id
@@ -83,7 +84,6 @@ def process_calculation(message):
         platform = user_platform.get(chat_id, "facebook")
         goal = user_goal.get(chat_id, "goal_engagement")
 
-        # منطق العمولات
         if mode == "DZD_TO_USD":
             dzd = val
             if dzd < 6000: p = 600
@@ -100,7 +100,6 @@ def process_calculation(message):
             else: p = 1500
             dzd = raw_dzd + p
 
-        # --- حساب الإحصائيات المتغيرة حسب الهدف ---
         stats_text = ""
         if goal == "goal_engagement":
             res = (usd * 200, usd * 600)
@@ -119,4 +118,37 @@ def process_calculation(message):
             f"📊 **نتائج الحساب التقريبي:**\n"
             f"━━━━━━━━━━━━━━━\n"
             f"💰 تدفع بالدينار: {dzd:,.0f} DZD\n"
-            f"💵 رصيدك في
+            f"💵 رصيدك في الإعلان: **{usd:.2f} USD**\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"📈 إحصائيات المتوقعة ({platform.upper()}):\n"
+            f"{stats_text}\n\n"
+            f"⚠️ ملاحظة: النتائج تعتمد على جودة المحتوى."
+        )
+        bot.send_message(chat_id, final_res, parse_mode='Markdown')
+        bot.send_message(ADMIN_ID, f"👤 استعلام جديد:\nالمبلغ: {dzd} DZD\nالسعر: {rate}")
+
+    except Exception:
+        bot.reply_to(message, "⚠️ يرجى إدخال مبلغ صحيح.")
+
+# --- لوحة الأدمن ---
+@bot.message_handler(func=lambda message: message.text == "⚙️ إعدادات الأدمن" and message.chat.id == ADMIN_ID)
+def admin_panel(message):
+    curr = get_stored_rate()
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("تعديل سعر الصرف", callback_data="admin_settings"))
+    bot.send_message(message.chat.id, f"لوحة التحكم\nالسعر الحالي: {curr} دج", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_settings")
+def admin_rate_change(call):
+    bot.send_message(call.message.chat.id, "📥 أرسل سعر الصرف الجديد:")
+    bot.register_next_step_handler(call.message, update_rate)
+
+def update_rate(message):
+    try:
+        new_rate = float(message.text)
+        save_rate(new_rate)
+        bot.reply_to(message, f"✅ تم تحديث السعر لـ {new_rate} دج")
+    except: bot.reply_to(message, "⚠️ خطأ في الرقم.")
+
+bot.polling(none_stop=True)
+                            
